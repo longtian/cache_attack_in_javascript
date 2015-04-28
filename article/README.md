@@ -21,7 +21,7 @@
 - http://baike.baidu.com/link?url=jQGLb4ZNHV9ReIvGyRJppN94pp-ztWK-qcN0vsNzJTeKy3Htl6YpDgguwRtP2OGHpwKoX0U0vpTvqD-tuYXWa_
 - http://www.docin.com/p-692268752.html
 - [freeshell修复边信道攻击漏洞](http://www.2cto.com/Article/201409/332354.html)
-
+- [10] https://www.usenix.org/conference/woot14/workshop-program/presentation/ho
 ------------------------
 
 ## 摘要
@@ -218,4 +218,39 @@ var endTime = window.performance.now();
 映射了超过25%的组，1分钟内就达到了50%。这个算法并行是非常简单的，因为大部分的执行时间花在了维护数据结构上，只有一小部分实际花在让缓存失效和
 度量上。整个算法不到500行JavaScript代码。
 
-为了验证我们的算法真的能够识别组，我们设计了一个实验来比较一个变量被flush前后的访问延迟。图3显示了
+为了验证我们的算法能够辨别不同的组，我们设计yin了一个实验来比较一个变量被flush前后的访问延迟。图3显示了两种方式访问变量的概率分布函数。灰色的是
+用我们的方式从缓存中flush出去的，黑色是贮存在缓存里的。时间的测量是用JavaScript的高精度计时器，因此也包括了JavaScript运行时的延迟。
+两者的不同是显而易见的。图4显示的是在每个组有16个条目的较早版本的 Sandy Bridge CPU 上捕捉到的结果。我们把这种视觉呈现称作 “内存谱图”，
+因为它看起来很像声音的谱图。
+
+图5显示的是每隔400ms抓取一次的内存谱图。其中X轴对应时间，Y轴对应不同的组。例子中的时间分辨率是250微秒，检测了一共128块个组。每个点的密度
+代表了这个组在这个时间的访问延迟。黑色代表延迟较低，意味从上次测量到现在没有其它进程访问过这个组。白色意味着攻击者的数据在上次测量之后被清除了。
+
+细看这个内存谱图可以得到几个显而易见的事实。首先，很明显虽然没用机器语言指令而是用了 JavaScript 的计时器，测量的抖动很小，活跃和不活跃的组
+很容易被区分。很容易注意到图中有几条垂直的线，意味着同一时间间隔里有多个相邻的组被访问。因为连续的组对应的物理内存的地址也是连续的，我们
+相信这个信号代表着一个超过 64 字节的汇编指令。还有一些聚在一起的组被同时访问。我们推理这代表着变量的访问。最后，横着的白线预示着一个变量
+被不断地访问。这个变量可能是属于测量代码的或是当前的 JavaScript 运行时。从一个没有任何特权的网页能得到这么多信息真是太了不起了。
+
+### 2.2 在缓存里找有意思的区域
+
+清除集让黑客能够监控任意一个缓存里的组的动作。因为我们得到的清除集是不典型的，因此攻击者必须想办法把测量的组和受害者的数据或是代码的地址
+关联起来。这个学习/分类的问题已经由 Zhang 和 Yarom 分别在 文[25] 和 文[23] 里提出了，他们采用了不同的例如 SVM 的机器学习的算法试图从
+缓存延迟的测量数据里找到规律。
+
+为了有效地展开这个学习的过程，攻击需要诱导受害者做一些操作，然后检查哪些组被这个操作访问到，详见 算法2。
+
+```
+Let S i be the data structure matched to eviction set i
+1. For each set i:
+    (a) Iteratively access all members of S i to prime the cache set
+    (b) Measure the time it takes to iteratively access all members of S i
+    (c) Perform an interesting operation
+    (d) Measure once more the time it takes to iteratively access all members of S i
+    (e) If performing the interesting operation caused the access time to slow down considerably, then the operation was 
+    associated with cache set i.
+```
+
+因为JavaScript受到一系列的权限限制，实现步骤(c)是很有挑战的。与之形成对比的是 Apecechea等人能够用一个空的**sysenter**调用来触发一次
+细小的内核操作。为了实现这个步骤，我们必须调查 JavaScript 的运行时来发现哪些函数会触发有意思的行为，例如文件访问，网络访问，内存分配等等。
+我们还对那些运行时间相对较短，不会产生遗留的函数感兴趣。遗留可能导致垃圾回收，进而影响步骤(d)的测量。Ho 等人在 文[10] 中已经找到了这样的
+几个函数。
