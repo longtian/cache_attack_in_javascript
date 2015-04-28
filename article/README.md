@@ -20,6 +20,7 @@
 ## 翻译参考
 - http://baike.baidu.com/link?url=jQGLb4ZNHV9ReIvGyRJppN94pp-ztWK-qcN0vsNzJTeKy3Htl6YpDgguwRtP2OGHpwKoX0U0vpTvqD-tuYXWa_
 - http://www.docin.com/p-692268752.html
+- [freeshell修复边信道攻击漏洞](http://www.2cto.com/Article/201409/332354.html)
 
 ------------------------
 
@@ -60,6 +61,8 @@
 level 2 (L2) cache，最后是最大的 level 3 (L3) cache 并和 RAM 相连。Intel 当前代号为 Haswell 的新一代 CPU 采用了另一种嵌入式的 
 DRAM(eDRAM) 设计，不在讨论范围内。如果 CPU 需要访问的数据当前不在缓存里，会触发一个 **cache miss** ，为了给新元素腾出空间，当前缓存
 里的一项必须被 **evicted**。
+
+[图1](!../assets/figure1.png)
   
 Intel 的缓存微架构是**嵌套的**-所有一级缓存里的数据必须同时存在二级和三级缓存里。反过来的，如果某个元素在三级缓存里被移除，那它也会立刻被
 从二级和一级缓存里移走。需要注意的是 AMD 缓存微架构的设计是专一的，所以本文描述的方法并不能立刻应用到该平台上。
@@ -157,4 +160,62 @@ JavaScript 如何实现。
 并没有立刻清晰起来，因为我们不知道我们的缓冲区里各个页在物理内存中的地址。
 
 
-解决这个问题一个不成熟的做法是，给定一个任意的“受害者”在内存中的地址，通过暴力手段从131K个偏移中找到12个
+解决这个问题一个不成熟的做法是，给定一个任意的“受害者”在内存中的地址，通过暴力手段从131K个偏移中找到12个与这个地址共享组的地址。要完成这点，
+我们可以从131K个偏移量固定几个作为子集，然后在迭代了所有的偏移量后测量下访问的延迟有没有变化。如果延迟增加了，意味着集合里包含着12个与
+受害者地址共享组。如果延迟没有变化，那子集里不包括12个地址中的任何一个，这样受害者地址就还在缓存里。把这个过程重复8192遍，每次用一个不同的
+受害者地址，我们就可以识别每个组并且建立自己的数据结构。
+
+受这个启发立刻写出来的程序会运行时间会非常长。幸运的是， Intel MMU 的页帧大小（章节1.1）非常有帮助，因为虚拟地址是页对齐的，每个虚拟地址的
+低12位和每个物理的低12位是一致的。据 Hund 等人所称，12个比特中的6个被用来唯一决定组索引。因此，eviction buffer 中的一个偏移会和其它8K偏移
+共享12到6位，而不是所有131K个。而且，只要找到一个组就能立刻知道其它的63个在相同页帧里的组。再加上JavaScript分配大的数据缓冲区的时候是
+和页帧的边界对其的，所以可以用算法1中的贪心算法。
+
+**Algorithm 1** Profiling a cache set
+Let S be the set of unmapped pages, and address x be an arbitrary page-aligned address in memory
+
+1. Repeat k times:
+
+```
+(a) Iteratively access all members of S
+(b) Measure t 1 , the time it takes to access x
+(c) Select a random page s from S and remove it
+(d) Iteratively access all members of S\s
+(e) Measure t 2 , the time it takes to access x
+(f) If removing page s caused the memory access to speed up considerably (i.e., t 1 − t 2 > thres),
+then this page is part of the same set as x. Place it back into S.
+(g) If removing page s did not cause memory access to speed up considerably,
+then this address is not part of the same set as x.
+```
+2. If |S| = 12, return S. Otherwise report failure.
+
+多次运行这个程序，我们可以逐渐的建立一个 eviction set 来覆盖大部分的缓存，除了那些被 JavaScript 本身运行所使用的。我们注意到，
+与[23]中的算法建立的 eviction buffer 不同，我们的 eviction set 不是正统的 - 因为JavaScript 没有指针的概念，所以如果我们发现了一个
+eviction set 我们没有办法知道它对应着 CPU 高速缓存的哪个组。此外，在相同的机器上每次运行这个算法都会得到不同的映射。这也许是源于4K的页大小
+而不是2MB的页大小，即使不用JavaScript用机器码也无法改变。
+
+### 2.1.2 验证
+
+我们用 JavaScript 实现了 算法1 并且在安装了 Ivy Bridge， Sandy Bridge，Haswell系列 CPU 的机器上进行验证，机器上装有 Safari 和 Firefox
+对应运行在 Mac OS Yosemite 和 Ubuntu 14.04 LTS 操作系统上。系统并没有被配置使用大的页而是用默认的 4K 页大小。列表1显示了实现 算法1.d
+和 算法1.e 的代码，演示了JavaScript下怎么遍历链表和测量时间。算法的运行在 Chrome 和 Internet Explorer 下依赖的额外的几个步骤在章节5.1中。
+
+```javascript
+// Invalidate the cache set
+var currentEntry = startAddress;
+do {
+    currentEntry = probeView.getUint32(currentEntry);
+} while (currentEntry != startAddress);
+
+// Measure access time
+var startTime = window.performance.now();
+currentEntry = primeView.getUint32(variableToAccess);
+
+var endTime = window.performance.now();
+```
+算法1
+
+图2显示了 profiling algorithm 的性能，使用 Intel i7-3720QM， 装有 Firefox 35.0.1 和 Mac OS 10.10.2 。我们很高兴的发现在30秒内就
+映射了超过25%的组，1分钟内就达到了50%。这个算法并行是非常简单的，因为大部分的执行时间花在了维护数据结构上，只有一小部分实际花在让缓存失效和
+度量上。整个算法不到500行JavaScript代码。
+
+为了验证我们的算法真的能够识别组，我们设计了一个实验来比较一个变量被flush前后的访问延迟。图3显示了
