@@ -1,5 +1,12 @@
-# 沙箱中的间谍 - 一种可行的JavaScript缓存攻击
-------------------------
+# \[译\] 沙箱中的间谍 - 可行的 JavaScript 缓冲区攻击
+----------------------------------
+
+## 关于译者
+
+龙天，全栈工程师，现居北京。偶遇[原文](http://arxiv.org/pdf/1502.07373v2.pdf)，知识点涉及计算机组成原理，虚拟化，JavaScript，HTML5规范
+等，内容较新（2015年），脑洞大开，再加上多次提及老东家的产品，因此译者尝试精读并且翻译这篇论文，不足之处欢迎大家批评指正。
+
+如果您有任何疑问和建议请猛戳[issues](https://github.com/wyvernnot/cache_attack_in_javascript/issues)
 
 ## 术语表
 - Cache Memory 高速缓存
@@ -18,13 +25,25 @@
 - eviction buffer
 - canonical 正规
 - flow tracking
+- page frame 页框
 
 ## 翻译参考
 - http://baike.baidu.com/link?url=jQGLb4ZNHV9ReIvGyRJppN94pp-ztWK-qcN0vsNzJTeKy3Htl6YpDgguwRtP2OGHpwKoX0U0vpTvqD-tuYXWa_
 - http://www.docin.com/p-692268752.html
 - [freeshell修复边信道攻击漏洞](http://www.2cto.com/Article/201409/332354.html)
 - [10] https://www.usenix.org/conference/woot14/workshop-program/presentation/ho
+
+# 以下是正文
 ------------------------
+
+## 作者和单位
+
+- Yossef Oren <yos AT cs.columbia.edu>
+- Vasileios P. Kemerlis <vpk AT cs.columbia.edu>
+- Simha Sethumadhavan <simha AT cs.columbia.edu>
+- Angelos D. Keromytis <angelos AT cs.columbia.edu>
+
+哥伦比亚大学计算机系
 
 ## 摘要
 
@@ -35,7 +54,7 @@
 用它构建了一种系统级别的鼠标和网络的活动记录器。抵御这种攻击使可能的，但是所需的反制措施将会对浏览器和电脑的正常使用产生不切实际的代价。
 
 
-## 1 简介
+## 1 引言
 
 边信号分析是密码学攻击里一种非常强大的类别。攻击者通过分析安全设备内部在进行安全运算时所产生的的物理信号（电流，辐射，热量等）来取得秘密信息。
 据说在二战中便有情报部门在使用，并由Kocher等人在1996年[14]首次在学术环境下讨论。边信号分析被证实可以侵入无数的现实世界中的系统，从汽车报警器
@@ -373,6 +392,15 @@ VMWare Fusion 7.1.0 宿主）。尽管在这个场景下高峰频率只能到大
 的最早的版本，和易被攻击的版本占全球互联网流量的比重，统计数据来自 StatCounter GlobalStatas 2015年一月份的结果。如表所示，今天80%的浏览器
 都无法抵御此类攻击。
 
+Browser brand| High Resolution Time Support | Typed Arrays Support | Worldwide prevalence
+-------------|-------------|-------------|-------------
+Internet Explorer | 10  | 11  | 11.77%
+Safari            | 8   | 6   | 1.86%
+Chrome            | 20  | 7   | 50%
+Firefox           | 15  | 4   | 17.67%
+Opera             | 15  | 12.1| 1.2%
+Total             | -   | -   | 83.03%
+
 攻击能否取得效果，取决于能不能用 JavaScript 高精度的时间 API进行精准的测量。W3C 虽然建议 API 的最高精度的时间戳是“毫秒的千分之一”，但是
 并没有建议该值的最大精度，实际上浏览器不同、操作系统不同这个值也会经常变。举个例子，我们在测试过程中发现 MacOS 上的 Safari 浏览器可以精确
 到纳秒，而 Windows 上的 IE 浏览器只能精确到 0.8 微秒。 另一方面， Chrome 浏览器在所有我们测试的操作系统上都表现为一致的 1 微秒。
@@ -410,7 +438,11 @@ VMWare Fusion 7.1.0 宿主）。尽管在这个场景下高峰频率只能到大
 与缓存攻击一般被用于密码分析应用不同，本文介绍了这种方式如何被有效地利用来跟踪用户的行为。边信道攻击的范围已经被拓展了，
 这意味着必须设计新一类的安全系统应对边信道攻击。
 
-## 致谢 参考
+## 致谢 
+
+我们很感谢激 Henry Wong 对于 Ivy Bridge 缓存替换策略的研究和 Burton Rosenberg 对于页和页框的指导。
+
+## 参考文献
 
 见原文
 
